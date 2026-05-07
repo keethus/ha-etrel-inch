@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Etrel INCH lādētājs",
-        "description": "Pievienot Etrel INCH elektroauto lādētāju caur Modbus TCP. Ievadiet lādētāja IP adresi, Modbus portu (parasti 502), Modbus slave/unit ID, draudzīgu nosaukumu un aptaujas intervālu sekundēs. Aptaujas intervālam jābūt īsākam par lādētāja monitoring_interval iestatījumu, lai netiktu aktivizēts watchdog atkāpšanās režīms.",
+        "description": "Pievienot Etrel INCH elektroauto lādētāju caur Modbus TCP. Ievadiet IP adresi, Modbus portu (parasti 502), slave/unit ID (pamēģiniet 1, vecākām programmaparatūrām var būt 255), nosaukumu un aptaujas intervālu sekundēs. Aptaujas intervālam jābūt īsākam par lādētāja monitoring_interval iestatījumu, lai netiktu aktivizēts watchdog atkāpšanās režīms.",
         "data": {
           "name": "Nosaukums",
           "host": "Adrese vai IP",
@@ -25,10 +25,10 @@
     "step": {
       "init": {
         "title": "Etrel INCH iestatījumi",
-        "description": "Pielāgojiet aptaujas intervālu. Ieslēdziet rakstīšanas vadību tikai pēc tam, kad esat apstiprinājis pareizos reģistru adreses savai programmaparatūrai — pašlaik norādītās ir tikai vietturi.",
+        "description": "Pielāgojiet aptaujas intervālu. Rakstīšanas vadību ieslēgšana pievieno strāvas/jaudas iestatījumu slīdņus, pauzes slēdzi, apturēšanas/atbrīvošanas/restartēšanas pogas un atiešanas laika entītiju.",
         "data": {
           "poll_interval": "Aptaujas intervāls (sekundes)",
-          "enable_writes": "Ieslēgt rakstīšanas vadību (strāva, pauze)"
+          "enable_writes": "Ieslēgt rakstīšanas vadību"
         }
       }
     }
@@ -51,18 +51,71 @@
           "unknown": "Nezināms"
         }
       },
+      "phase_mode": {
+        "name": "Fāžu režīms",
+        "state": {
+          "three_phase": "Trīsfāžu",
+          "two_phase": "Divfāžu",
+          "single_l1": "Vienfāzes L1",
+          "single_l2": "Vienfāzes L2",
+          "single_l3": "Vienfāzes L3",
+          "unknown": "Nezināms"
+        }
+      },
+      "voltage_l1": { "name": "Spriegums L1" },
+      "voltage_l2": { "name": "Spriegums L2" },
+      "voltage_l3": { "name": "Spriegums L3" },
+      "current_l1": { "name": "Strāva L1" },
+      "current_l2": { "name": "Strāva L2" },
+      "current_l3": { "name": "Strāva L3" },
+      "power_l1": { "name": "Jauda L1" },
+      "power_l2": { "name": "Jauda L2" },
+      "power_l3": { "name": "Jauda L3" },
       "active_power": { "name": "Aktīvā jauda" },
+      "frequency": { "name": "Frekvence" },
+      "power_factor": { "name": "Jaudas koeficients" },
+      "vehicle_max_current": { "name": "Auto maksimālā strāva" },
+      "target_current": { "name": "Mērķa strāva" },
       "session_energy": { "name": "Sesijas enerģija" },
       "session_duration": { "name": "Sesijas ilgums" },
-      "num_phases": { "name": "Aktīvās fāzes" },
+      "session_departure_time": { "name": "Sesijas atiešanas laiks" },
+      "session_id": { "name": "Sesijas ID" },
+      "ev_max_power": { "name": "Auto maksimālā jauda" },
+      "ev_planned_energy": { "name": "Auto plānotā enerģija" },
+      "custom_max_current": { "name": "Iestatītais maksimums" },
+      "connector_type": {
+        "name": "Pieslēgvietas tips",
+        "state": {
+          "socket_type2": "Type 2 ligzda",
+          "cable_type2": "Type 2 vads",
+          "unknown": "Nezināms"
+        }
+      },
+      "num_connectors": { "name": "Pieslēgvietu skaits" },
+      "num_phases_hw": { "name": "Aparatūras fāžu skaits" },
+      "phase_rotation_l1": { "name": "L1 → fāze" },
+      "phase_rotation_l2": { "name": "L2 → fāze" },
+      "phase_rotation_l3": { "name": "L3 → fāze" },
       "model": { "name": "Modelis" },
-      "sw_version": { "name": "Programmaparatūras versija" }
+      "serial_number": { "name": "Sērijas numurs" },
+      "sw_version": { "name": "Programmaparatūras versija" },
+      "hw_version": { "name": "Aparatūras versija" }
     },
     "number": {
-      "charging_current_setpoint": { "name": "Lādēšanas strāvas iestatījums" }
+      "current_setpoint": { "name": "Strāvas iestatījums" },
+      "power_setpoint": { "name": "Jaudas iestatījums" }
     },
     "switch": {
       "charging_paused": { "name": "Apturēt lādēšanu" }
+    },
+    "button": {
+      "stop_charging": { "name": "Apturēt lādēšanu" },
+      "release_current_setpoint": { "name": "Atbrīvot strāvas iestatījumu" },
+      "release_power_setpoint": { "name": "Atbrīvot jaudas iestatījumu" },
+      "restart_charger": { "name": "Restartēt lādētāju" }
+    },
+    "datetime": {
+      "departure_time": { "name": "Atiešanas laiks" }
     }
   }
 }

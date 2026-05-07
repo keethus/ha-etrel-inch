@@ -1,7 +1,7 @@
 {
   "domain": "etrel_inch",
   "name": "Etrel INCH EV Charger",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "documentation": "https://github.com/keethus/ha-etrel-inch",
   "issue_tracker": "https://github.com/keethus/ha-etrel-inch/issues",
   "codeowners": ["@keethus"],

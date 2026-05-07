@@ -5,9 +5,10 @@
 [![hacs][hacs-shield]][hacs]
 
 _Custom Home Assistant integration for the **Etrel INCH** family of EV
-chargers. Local-polling Modbus TCP — no cloud, no extra hardware. Verified
-on **INCH Pro G-PC1V5BY40** (22 kW, 3-phase, MID meter) running firmware
-**OS 5.0 / SW 5.4 / Web 2.8.4**._
+chargers (also sold rebadged as **Sonnen Charger**, **eMobility Power**,
+and others). Local-polling Modbus TCP — no cloud, no extra hardware.
+Verified on **INCH Pro G-PC1V5BY40** (22 kW, 3-phase, MID meter) running
+firmware **OS 5.0 / SW 5.4 / Web 2.8.4**._
 
 ## Table of contents
 
@@ -18,9 +19,10 @@ on **INCH Pro G-PC1V5BY40** (22 kW, 3-phase, MID meter) running firmware
 - [Entities](#entities)
 - [Options](#options)
 - [Watchdog behavior](#watchdog-behavior)
-- [Writes — disabled by default](#writes--disabled-by-default)
+- [History &amp; long-term statistics](#history--long-term-statistics)
 - [Multi-charger setup](#multi-charger-setup)
 - [Troubleshooting](#troubleshooting)
+- [Register map](#register-map)
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
@@ -28,39 +30,43 @@ on **INCH Pro G-PC1V5BY40** (22 kW, 3-phase, MID meter) running firmware
 ## Features
 
 - **Local Modbus TCP** — talks straight to the charger's port `502`. No
-  Etrel cloud account, no OCPP central system, no internet required.
+  Etrel cloud, no OCPP central system, no internet.
 - **One device per charger.** Add the integration multiple times to
   monitor multiple chargers on the same LAN.
-- **Watchdog-aware polling** — defaults to 10 s, configurable 2–60 s.
-- **All the metrics the Energy Dashboard needs**: charge status (decoded
-  to a string), active power (kW), session energy (kWh,
-  `total_increasing`), session duration, active phases.
-- **No third-party Python dependencies**: the integration ships with
-  `requirements: []` and uses only `pymodbus` from HA core.
-- **Optional, gated write controls** for charging current setpoint and
-  pause/resume — disabled by default while their register addresses are
-  unverified for firmware 5.4. See [Writes](#writes--disabled-by-default).
+- **Watchdog-aware polling** — defaults to 10 s, configurable 2-60 s.
+- **Complete Modbus surface area exposed.** Every register the INCH
+  publishes is a Home Assistant entity:
+  - Per-phase **voltage**, **current**, **active power**
+  - Total **active power**, **session energy**, **session duration**
+  - **Frequency**, **power factor**
+  - **Vehicle-reported** max current, max power, planned energy, departure time
+  - Charger **target current** (the live setpoint readback)
+- **Optional, gated write controls** — current/power setpoint, pause/resume,
+  stop, release-override, restart, and departure time.
+- **No third-party Python dependencies**: ships with `requirements: []`
+  and uses only `pymodbus` from HA core.
 
 ## How it works
 
-The Etrel INCH exposes its full state over Modbus holding registers on
-port `502`. The integration:
+The Etrel INCH exposes its full state on Modbus port `502`:
 
-1. Opens one TCP connection per charger and reads two contiguous register
-   blocks each poll cycle:
-   - regs `0–1` — `charge_status`, `num_phases`
-   - regs `26–39` — `active_power` (float32), `session_energy` (float32),
-     `session_duration` (int64), `departure_time_read` (int64)
-2. Reads regs `990–1019` once at setup for serial number, model, hardware
-   and software version. The serial is used as the HA `unique_id`, which
-   makes the integration safe to add multiple times for multiple chargers.
-3. Decodes everything as **big-endian** for both bytes and words — the
-   default Etrel convention. If your charger ships a different byte order,
-   tweak the helpers in
-   [`modbus_client.py`](custom_components/etrel_inch/modbus_client.py).
-4. Surfaces the result through a standard
-   `DataUpdateCoordinator`. Connection drops mark entities *unavailable*
-   and HA applies its own exponential backoff.
+- All **runtime data** lives on **input registers** (function code `04`)
+  at addresses 0-46.
+- All **identity / hardware-config data** lives on **input registers**
+  at addresses 990-1029.
+- All **writes** go to **holding registers** (function code `16`) at
+  addresses 1-13 and 1000-1004.
+
+Per poll cycle the integration:
+
+1. Reads regs `0-47` in one request → status, phase mode, all per-phase
+   measurements, session totals, EV-reported targets, session ID.
+2. Reads regs `990-1029` once at setup → serial, model, firmware, hardware
+   phase config, installer-set max current.
+
+Decoding is big-endian (byte and word), matching every published Etrel
+reference. Connection drops mark entities *unavailable*; HA's
+`DataUpdateCoordinator` applies exponential backoff before reconnecting.
 
 ## Installation
 
@@ -70,7 +76,7 @@ port `502`. The integration:
 
 Or manually in HACS:
 
-1. **HACS → Integrations → ⋮ (top-right) → Custom repositories**
+1. **HACS → Integrations → ⋮ → Custom repositories**
 2. Add `https://github.com/keethus/ha-etrel-inch` with category
    **Integration**.
 3. Install **Etrel INCH EV Charger** and restart Home Assistant.
@@ -86,131 +92,181 @@ Or manually in HACS:
 ## Configuration
 
 Modbus must be **enabled** on the charger first — log in to the charger's
-web UI, *Settings → Modbus*, switch it on. Note the slave/unit ID (default
-`1`) and the `monitoring_interval` value; you'll want the HA poll interval
-to be shorter than that (see [Watchdog behavior](#watchdog-behavior)).
+web UI, *Settings → Modbus*, switch it on. Note the slave/unit ID (try
+**`1`** first; some older firmwares ship with **`255`**).
 
 In Home Assistant:
 
 1. **Settings → Devices & Services → Add Integration → Etrel INCH EV Charger**.
 2. Fill in:
 
-   | Field             | Default       | Notes                                                              |
-   | ----------------- | ------------- | ------------------------------------------------------------------ |
-   | Name              | `Etrel INCH`  | Free-form, used as the device name in HA.                          |
-   | Host / IP         | —             | Charger's LAN address. Reserve it on your DHCP server.             |
-   | Modbus TCP port   | `502`         |                                                                    |
-   | Slave / Unit ID   | `1`           | Whatever the charger's web UI shows.                               |
-   | Poll interval (s) | `10`          | **Must** be shorter than the charger's `monitoring_interval`.      |
+   | Field             | Default       | Notes                                                                         |
+   | ----------------- | ------------- | ----------------------------------------------------------------------------- |
+   | Name              | `Etrel INCH`  | Free-form, used as the device name in HA.                                     |
+   | Host / IP         | —             | Charger's LAN address. Reserve it on your DHCP server.                        |
+   | Modbus TCP port   | `502`         |                                                                               |
+   | Slave / Unit ID   | `1`           | Try `1`; if the connection probe times out or returns garbage, try `255`.     |
+   | Poll interval (s) | `10`          | **Must** be shorter than the charger's `monitoring_interval`.                 |
 
-3. The flow validates the connection by reading the serial number (reg `990`).
-   If the charger answers, the entry is created and entities show up
-   within a few seconds.
+3. The flow validates by reading the dynamic block (regs 0-1). If the
+   charger answers, the entry is created and entities populate within ~10 s.
 
 ## Entities
 
-Each charger becomes one HA *device* with the following entities:
+Each charger becomes one HA *device*. Entities are grouped by function;
+diagnostic-category entities are **disabled by default** — enable them in
+the entity registry if you need them.
 
-| Entity                | Class      | Source register | Notes                                          |
-| --------------------- | ---------- | --------------- | ---------------------------------------------- |
-| `charge_status`       | sensor     | `0` (int16)     | Decoded enum: `available`, `charging`, …       |
-| `active_power`        | sensor     | `26` (float32)  | `kW`, `MEASUREMENT`, `POWER`                   |
-| `session_energy`      | sensor     | `30` (float32)  | `kWh`, `TOTAL_INCREASING`, `ENERGY`            |
-| `session_duration`    | sensor     | `32` (int64)    | seconds, `MEASUREMENT`, `DURATION`             |
-| `num_phases`          | sensor     | `1`  (int16)    | 1 or 3                                         |
-| `model`               | sensor     | `1000`          | Disabled by default; diagnostic.               |
-| `sw_version`          | sensor     | `1015`          | Disabled by default; diagnostic.               |
+### Sensors (read-only)
 
-`session_energy` is `TOTAL_INCREASING`, so it works directly as an
-**Energy Dashboard** source for *Individual devices* — pick it under
-*Settings → Dashboards → Energy → Add device*.
+**Live electrical:**
 
-`departure_time_read` (reg `36`) is read by the coordinator but not
-exposed yet. PR welcome.
+| Entity | Source reg | Class |
+|---|---:|---|
+| Charge status | `0` | ENUM (10 states + unknown) |
+| Phase mode | `1` | ENUM (3-phase, 2-phase, single L1/L2/L3) |
+| Vehicle max current | `2` | A, MEASUREMENT |
+| Target current | `4` | A, MEASUREMENT (live setpoint readback) |
+| Frequency | `6` | Hz, MEASUREMENT |
+| Voltage L1 / L2 / L3 | `8` / `10` / `12` | V, MEASUREMENT |
+| Current L1 / L2 / L3 | `14` / `16` / `18` | A, MEASUREMENT |
+| Power L1 / L2 / L3 | `20` / `22` / `24` | kW, MEASUREMENT |
+| Active power (total) | `26` | kW, MEASUREMENT |
+| Power factor | `28` | %, MEASUREMENT (raw 0-1 → displayed 0-100 %) |
+
+**Session:**
+
+| Entity | Source reg | Class |
+|---|---:|---|
+| Session energy | `30` | kWh, TOTAL_INCREASING |
+| Session duration | `32` | s, MEASUREMENT |
+| Session departure time | `36` | TIMESTAMP |
+| Session ID *(diagnostic)* | `40` | int |
+| EV max power | `44` | kW, MEASUREMENT |
+| EV planned energy | `46` | kWh, MEASUREMENT |
+
+**Diagnostics (disabled by default):** `model`, `serial_number`,
+`sw_version`, `hw_version`, `num_connectors`, `connector_type`,
+`num_phases_hw`, `phase_rotation_l1/l2/l3`, `custom_max_current`.
+
+> **Firmware caveat:** `session_energy` (reg 30) is reported as
+> "always zero" on some firmwares (see [evcc#5346][evcc-issue]). If yours
+> does the same, derive cumulative energy from `active_power` over time
+> with HA's `integration` integration.
+
+### Number entities (write — gated)
+
+| Entity | Target reg | Range |
+|---|---:|---|
+| Current setpoint | `8` | 6-32 A (float32) |
+| Power setpoint *(disabled by default)* | `11` | 1.4-22 kW (float32) |
+
+Writing `0` to the current setpoint pauses charging. To **release** the
+override and let the charger return to its previous regime, press the
+*Release current setpoint* button (writes to reg `10`).
+
+### Switch (write — gated)
+
+| Entity | Target reg | Notes |
+|---|---:|---|
+| Pause charging | `2` | Writes 1=pause, 0=resume. State derived from `charge_status` (`charger_paused`). |
+
+### Buttons (write — gated)
+
+| Entity | Target reg | Notes |
+|---|---:|---|
+| Stop charging | `1` | One-shot — ends the active session. |
+| Release current setpoint *(disabled)* | `10` | Cancels current override. |
+| Release power setpoint *(disabled)* | `13` | Cancels power override. |
+| Restart charger *(disabled, diagnostic)* | `1004` | Soft reboot. |
+
+### DateTime (write — gated)
+
+| Entity | Target reg | Notes |
+|---|---:|---|
+| Departure time | `4` (write) / `36` (read) | int64 unix timestamp; the EV-reported planned departure. |
 
 ## Options
 
 Per-entry: **Settings → Devices & Services → Etrel INCH EV Charger →
 Configure**:
 
-| Option              | Default | Range          | Notes                                                                               |
-| ------------------- | ------- | -------------- | ----------------------------------------------------------------------------------- |
-| Poll interval       | 10 s    | 2 s – 60 s     | Live-reload — entry restarts when changed.                                          |
-| Enable write controls | off   | —              | Adds the (PLACEHOLDER) current/pause entities. **Verify registers first.**          |
+| Option              | Default | Range          | Notes                                                                                                                                              |
+| ------------------- | ------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Poll interval       | 10 s    | 2 s - 60 s     | Live-reload — entry restarts when changed.                                                                                                         |
+| Enable write controls | off   | —              | When on, registers the number/switch/button/datetime write entities. Off by default so a fresh install never touches the charger's command registers. |
 
 ## Watchdog behavior
 
 When Modbus is enabled on the charger, two parameters control the watchdog:
 
 - `monitoring_interval` — if no Modbus read arrives within this many
-  seconds, the charger drops to `fallback_current` (typically a low or
-  zero amperage).
-- `fallback_current` — the safe-mode amperage used after a watchdog timeout.
+  seconds, the charger drops to `fallback_current`.
+- `fallback_current` — the safe-mode amperage used after a timeout.
 
 **Recommendations:**
 
-- **Read-only setups** (no write controls): set `monitoring_interval = 0`
-  on the charger to **disable** the watchdog entirely. The integration
-  will still poll every `poll_interval` seconds, but a network blip won't
-  cause the charger to throttle.
-- **Setups that issue writes**: keep the watchdog enabled and ensure
+- **Read-only setups:** set `monitoring_interval = 0` on the charger to
+  **disable** the watchdog entirely. The integration still polls every
+  `poll_interval` seconds, but a network blip won't cause the charger to
+  throttle.
+- **Setups using write controls:** keep the watchdog enabled and ensure
   `poll_interval < monitoring_interval` with margin (e.g.
   `monitoring_interval = 30`, `poll_interval = 10`).
 
-## Writes — disabled by default
+## History &amp; long-term statistics
 
-The Etrel INCH Modbus map for write registers is firmware-dependent and not
-publicly published in a single canonical document. The placeholders in
-[`const.py`](custom_components/etrel_inch/const.py)
-(`REG_CHARGING_CURRENT_SETPOINT_PLACEHOLDER`,
-`REG_CHARGING_PAUSE_PLACEHOLDER`) are **likely wrong** for your firmware,
-which is why the *Enable write controls* option is off by default.
+You don't need to do anything special to keep history — Home Assistant's
+recorder stores it natively for every entity. For each sensor we expose:
 
-To find the real addresses:
+- **Short-term history** (default 10 days, configurable in HA's recorder
+  settings) — visible on each entity's detail page as a graph.
+- **Long-term statistics** — kept forever for any sensor with
+  `state_class=MEASUREMENT` or `TOTAL_INCREASING`. Queryable via
+  *Developer tools → Statistics* and used by the Energy dashboard.
 
-1. Install `mbpoll` (`brew install mbpoll` on macOS, `apt install mbpoll`
-   on Debian/Ubuntu).
-2. Probe documented holding registers near the typical "command" range:
-   ```bash
-   # read 1 register at address N (decimal), function code 3 (holding)
-   mbpoll -m tcp -a 1 -r N -t 4 -c 1 192.168.x.x
-   ```
-3. Cross-reference with:
-   - Etrel's official Modbus map for your firmware (request from your
-     installer or Etrel support).
-   - The Home Assistant community thread *"Etrel Inch Pro Modbus
-     integration"* (forum post 736292).
-   - The `evcc` Etrel driver:
-     <https://github.com/evcc-io/evcc/blob/master/charger/etrel.go>.
-4. Edit `REG_CHARGING_CURRENT_SETPOINT_PLACEHOLDER` and
-   `REG_CHARGING_PAUSE_PLACEHOLDER` in `const.py`, restart HA, then turn
-   on *Enable write controls* in the integration's options.
+For **Energy dashboard** integration, add `session_energy` as an
+*Individual device* under **Settings → Dashboards → Energy**. If your
+firmware leaves reg 30 at zero, use HA's `integration` helper to integrate
+`active_power` over time — same end result.
 
-PRs that confirm working register addresses for a specific firmware are
-very welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+For **higher-fidelity history**, drop `poll_interval` to `2` s. The DB
+grows linearly so set HA's recorder retention accordingly.
 
 ## Multi-charger setup
 
-Run **Add Integration → Etrel INCH EV Charger** once per charger.
-Each entry is bound to its serial number (read from register `990`), so
-HA refuses to add the same charger twice. Naming each entry distinctly
-(`Garage`, `Driveway`, `Warehouse`) is the easiest way to keep their
-entities apart in the device registry.
+Run **Add Integration → Etrel INCH EV Charger** once per charger. Each
+entry is bound to its serial number (read from reg 990). If your firmware
+leaves the serial blank, the integration falls back to a stable
+`etrel_inch_<host>_<slave>` unique_id — duplicate-prevention still works.
+
+Naming each entry distinctly (`Garage`, `Driveway`, `Visitor`, …) keeps
+their entities apart in the registry.
 
 ## Troubleshooting
 
-**`cannot_connect` in the config flow.**
-Confirm Modbus TCP is enabled on the charger, the slave ID matches, and
-nothing else has the connection open — some chargers permit only one
-Modbus TCP client at a time.
+**Connection succeeds but every value is 0 / "Unknown".**
+This was the symptom on integration v0.1 — fixed in v0.2 by switching
+reads to function code 04 (input registers). If you see it again on a
+newer firmware, run `mbpoll -m tcp -a 1 -t 3 -0 -r 0 -c 50 <host>` and
+share the output in an issue.
 
-**Sensor values look like garbage (e.g. `active_power = 4.2e-38`).**
-Almost always a byte/word ordering mismatch. The integration uses
-big-endian for both bytes and words, which matches Etrel's documented
-default. If your charger differs, tweak `_decode_float32` /
-`_decode_int64` in
-[`modbus_client.py`](custom_components/etrel_inch/modbus_client.py) and
-file an issue with your firmware version.
+**`cannot_connect` in the config flow.**
+Confirm Modbus TCP is enabled on the charger, the slave ID matches (try
+1 first, then 255), and nothing else has the connection open — some
+chargers permit only one Modbus TCP client at a time.
+
+**Session energy stays at 0 while charging.**
+Some firmwares zero this register. Use HA's `integration` integration to
+derive session/total energy from `active_power`. The
+[evcc team][evcc-issue] hit the same issue and disabled this register
+in their driver.
+
+**Sensor values look like garbage** (e.g. `voltage_l1 = 4.2e-38`).
+Byte/word ordering mismatch on a non-standard firmware. Edit the
+`_decode_float32` / `_decode_int64` helpers in
+[modbus_client.py](custom_components/etrel_inch/modbus_client.py) — try
+swapping the word order.
 
 **Charger throttles to fallback current.**
 Either your poll interval is longer than `monitoring_interval`, or the
@@ -218,7 +274,7 @@ watchdog timed out during a network glitch. Disable the watchdog
 (`monitoring_interval = 0`) for read-only use, or shorten the poll
 interval.
 
-**Enable debug logs** by adding to `configuration.yaml`:
+**Enable debug logs:**
 
 ```yaml
 logger:
@@ -227,6 +283,20 @@ logger:
     custom_components.etrel_inch: debug
     pymodbus: info
 ```
+
+## Register map
+
+Verified against the
+[abauske/sonnen_charger_modbus][abauske] reference Python implementation,
+the [evcc-io/evcc][evcc] Etrel driver, and the
+[Etrel knowledge base][etrel-kb]. See
+[`const.py`](custom_components/etrel_inch/const.py) for the source of
+truth this integration uses.
+
+For multi-connector chargers (INCH Duo), all dynamic addresses 0-46 take
+a `connector_id * 100` offset for the second connector (so the second
+connector's `charge_status` is at reg 100, etc.). Single-connector
+chargers (INCH Pro / Home) use offset 0.
 
 ## Development
 
@@ -242,13 +312,11 @@ ruff check .    # lint
 ruff format .   # format
 ```
 
-The verified register map and the placeholder write registers live in
-[`custom_components/etrel_inch/const.py`](custom_components/etrel_inch/const.py).
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — especially anything
-that turns a placeholder register into a verified one.
+that confirms register behavior on a firmware not yet listed in the
+[Register map](#register-map) section.
 
 ## License
 
@@ -263,3 +331,7 @@ This project is not affiliated with Etrel d.o.o.
 [license-shield]: https://img.shields.io/github/license/keethus/ha-etrel-inch?style=flat-square
 [hacs-shield]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square
 [hacs]: https://github.com/hacs/integration
+[abauske]: https://github.com/abauske/sonnen_charger_modbus
+[evcc]: https://github.com/evcc-io/evcc/blob/master/charger/etrel.go
+[evcc-issue]: https://github.com/evcc-io/evcc/issues/5346
+[etrel-kb]: https://etrelchargingsolutions.atlassian.net/wiki/spaces/Home/pages/2236121092/Modbus+Communication+with+Inch+products

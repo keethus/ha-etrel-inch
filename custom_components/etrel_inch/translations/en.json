@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Etrel INCH charger",
-        "description": "Add an Etrel INCH EV charger via Modbus TCP. Enter the charger's IP, Modbus port (default 502), slave/unit ID, a friendly name, and how often Home Assistant should poll it (seconds). Polling must be more frequent than the charger's Modbus monitoring_interval to avoid the watchdog fallback.",
+        "description": "Add an Etrel INCH EV charger via Modbus TCP. Enter the charger's IP, Modbus port (default 502), slave/unit ID (try 1, fall back to 255 on older firmwares), a friendly name, and how often Home Assistant should poll it (seconds). Polling must be more frequent than the charger's monitoring_interval to avoid the watchdog fallback.",
         "data": {
           "name": "Name",
           "host": "Host or IP address",
@@ -25,10 +25,10 @@
     "step": {
       "init": {
         "title": "Etrel INCH options",
-        "description": "Adjust how often the charger is polled. Enable writes only after you have confirmed the correct register addresses for your firmware — the current/pause registers shipped with this integration are placeholders.",
+        "description": "Adjust how often the charger is polled. Enabling write controls adds the current/power setpoint sliders, pause switch, stop/release/restart buttons, and the departure-time entity.",
         "data": {
           "poll_interval": "Poll interval (seconds)",
-          "enable_writes": "Enable write controls (current setpoint, pause)"
+          "enable_writes": "Enable write controls"
         }
       }
     }
@@ -51,18 +51,71 @@
           "unknown": "Unknown"
         }
       },
+      "phase_mode": {
+        "name": "Phase mode",
+        "state": {
+          "three_phase": "Three-phase",
+          "two_phase": "Two-phase",
+          "single_l1": "Single phase L1",
+          "single_l2": "Single phase L2",
+          "single_l3": "Single phase L3",
+          "unknown": "Unknown"
+        }
+      },
+      "voltage_l1": { "name": "Voltage L1" },
+      "voltage_l2": { "name": "Voltage L2" },
+      "voltage_l3": { "name": "Voltage L3" },
+      "current_l1": { "name": "Current L1" },
+      "current_l2": { "name": "Current L2" },
+      "current_l3": { "name": "Current L3" },
+      "power_l1": { "name": "Power L1" },
+      "power_l2": { "name": "Power L2" },
+      "power_l3": { "name": "Power L3" },
       "active_power": { "name": "Active power" },
+      "frequency": { "name": "Frequency" },
+      "power_factor": { "name": "Power factor" },
+      "vehicle_max_current": { "name": "Vehicle max current" },
+      "target_current": { "name": "Target current" },
       "session_energy": { "name": "Session energy" },
       "session_duration": { "name": "Session duration" },
-      "num_phases": { "name": "Active phases" },
+      "session_departure_time": { "name": "Session departure time" },
+      "session_id": { "name": "Session ID" },
+      "ev_max_power": { "name": "EV max power" },
+      "ev_planned_energy": { "name": "EV planned energy" },
+      "custom_max_current": { "name": "Site max current" },
+      "connector_type": {
+        "name": "Connector type",
+        "state": {
+          "socket_type2": "Type 2 socket",
+          "cable_type2": "Type 2 cable",
+          "unknown": "Unknown"
+        }
+      },
+      "num_connectors": { "name": "Connector count" },
+      "num_phases_hw": { "name": "Hardware phase count" },
+      "phase_rotation_l1": { "name": "L1 → phase" },
+      "phase_rotation_l2": { "name": "L2 → phase" },
+      "phase_rotation_l3": { "name": "L3 → phase" },
       "model": { "name": "Model" },
-      "sw_version": { "name": "Firmware version" }
+      "serial_number": { "name": "Serial number" },
+      "sw_version": { "name": "Firmware version" },
+      "hw_version": { "name": "Hardware version" }
     },
     "number": {
-      "charging_current_setpoint": { "name": "Charging current setpoint" }
+      "current_setpoint": { "name": "Current setpoint" },
+      "power_setpoint": { "name": "Power setpoint" }
     },
     "switch": {
       "charging_paused": { "name": "Pause charging" }
+    },
+    "button": {
+      "stop_charging": { "name": "Stop charging" },
+      "release_current_setpoint": { "name": "Release current setpoint" },
+      "release_power_setpoint": { "name": "Release power setpoint" },
+      "restart_charger": { "name": "Restart charger" }
+    },
+    "datetime": {
+      "departure_time": { "name": "Departure time" }
     }
   }
 }

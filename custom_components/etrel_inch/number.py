@@ -1,13 +1,19 @@
-"""Number platform — charging current setpoint (PLACEHOLDER, write-gated)."""
+"""Number platform — current setpoint (A) and power setpoint (kW).
+
+Both write to verified holding registers (FC 16) using float32 encoding:
+- current_setpoint: addr 8, A, range 6-32
+- power_setpoint:   addr 11, kW, range 1.4-22
+
+Gated behind CONF_ENABLE_WRITES until the user opts in.
+"""
 from __future__ import annotations
 
 import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfElectricCurrent
+from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo as HaDeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -15,12 +21,17 @@ from .const import (
     CONF_ENABLE_WRITES,
     CURRENT_SETPOINT_MAX_A,
     CURRENT_SETPOINT_MIN_A,
+    CURRENT_SETPOINT_STEP_A,
     DOMAIN,
-    MANUFACTURER,
-    REG_CHARGING_CURRENT_SETPOINT_PLACEHOLDER,
+    POWER_SETPOINT_MAX_KW,
+    POWER_SETPOINT_MIN_KW,
+    POWER_SETPOINT_STEP_KW,
+    REG_W_CURRENT_SETPOINT,
+    REG_W_POWER_SETPOINT,
 )
 from .coordinator import EtrelCoordinator
 from .modbus_client import EtrelModbusError
+from .sensor import build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,59 +42,82 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     if not entry.options.get(CONF_ENABLE_WRITES, False):
-        # Writes disabled — do not register the entity at all.
         return
-
     coordinator: EtrelCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([EtrelChargingCurrentNumber(coordinator)])
+    async_add_entities(
+        [
+            EtrelCurrentSetpointNumber(coordinator),
+            EtrelPowerSetpointNumber(coordinator),
+        ]
+    )
 
 
-class EtrelChargingCurrentNumber(CoordinatorEntity[EtrelCoordinator], NumberEntity):
-    """Set the charging current limit (amps).
-
-    NOTE: register address is a PLACEHOLDER. Verify against your firmware
-    before relying on this entity in automations.
-    """
-
+class _EtrelNumberBase(CoordinatorEntity[EtrelCoordinator], NumberEntity):
     _attr_has_entity_name = True
-    _attr_translation_key = "charging_current_setpoint"
-    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
-    _attr_native_min_value = float(CURRENT_SETPOINT_MIN_A)
-    _attr_native_max_value = float(CURRENT_SETPOINT_MAX_A)
-    _attr_native_step = 1.0
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator: EtrelCoordinator) -> None:
+    def __init__(self, coordinator: EtrelCoordinator, key: str) -> None:
         super().__init__(coordinator)
-        serial = coordinator.device_info.serial_number
-        self._attr_unique_id = f"{serial}_charging_current_setpoint"
-        self._attr_device_info = HaDeviceInfo(
-            identifiers={(DOMAIN, serial)},
-            manufacturer=MANUFACTURER,
-            name=coordinator.entry.title,
-            model=coordinator.device_info.model or None,
-            sw_version=coordinator.device_info.sw_version or None,
-            hw_version=coordinator.device_info.hw_version or None,
-            serial_number=serial or None,
-        )
+        self._attr_unique_id = f"{coordinator.device_info.serial_number}_{key}"
+        self._attr_device_info = build_device_info(coordinator)
         self._last_value: float | None = None
 
     @property
     def native_value(self) -> float | None:
         return self._last_value
 
+
+class EtrelCurrentSetpointNumber(_EtrelNumberBase):
+    _attr_translation_key = "current_setpoint"
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+    _attr_native_min_value = CURRENT_SETPOINT_MIN_A
+    _attr_native_max_value = CURRENT_SETPOINT_MAX_A
+    _attr_native_step = CURRENT_SETPOINT_STEP_A
+
+    def __init__(self, coordinator: EtrelCoordinator) -> None:
+        super().__init__(coordinator, "current_setpoint")
+        # Initial reflection: prefer target_current from the coordinator if non-zero.
+        data = coordinator.data or {}
+        target = data.get("target_current_a")
+        if isinstance(target, (int, float)) and target > 0:
+            self._last_value = float(target)
+
     async def async_set_native_value(self, value: float) -> None:
-        amps = max(
-            CURRENT_SETPOINT_MIN_A,
-            min(CURRENT_SETPOINT_MAX_A, int(round(value))),
-        )
+        amps = max(CURRENT_SETPOINT_MIN_A, min(CURRENT_SETPOINT_MAX_A, float(value)))
         try:
             await self.coordinator.client.write_current_setpoint(
-                address=REG_CHARGING_CURRENT_SETPOINT_PLACEHOLDER,
+                address=REG_W_CURRENT_SETPOINT,
                 amps=amps,
             )
         except EtrelModbusError as err:
             _LOGGER.error("Failed to write current setpoint: %s", err)
             raise
-        self._last_value = float(amps)
+        self._last_value = amps
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+
+class EtrelPowerSetpointNumber(_EtrelNumberBase):
+    _attr_translation_key = "power_setpoint"
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_native_min_value = POWER_SETPOINT_MIN_KW
+    _attr_native_max_value = POWER_SETPOINT_MAX_KW
+    _attr_native_step = POWER_SETPOINT_STEP_KW
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: EtrelCoordinator) -> None:
+        super().__init__(coordinator, "power_setpoint")
+
+    async def async_set_native_value(self, value: float) -> None:
+        kw = max(POWER_SETPOINT_MIN_KW, min(POWER_SETPOINT_MAX_KW, float(value)))
+        try:
+            await self.coordinator.client.write_power_setpoint(
+                address=REG_W_POWER_SETPOINT,
+                kw=kw,
+            )
+        except EtrelModbusError as err:
+            _LOGGER.error("Failed to write power setpoint: %s", err)
+            raise
+        self._last_value = kw
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()

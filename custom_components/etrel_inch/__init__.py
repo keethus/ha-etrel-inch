@@ -23,7 +23,13 @@ from .modbus_client import EtrelModbusClient, EtrelModbusError
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.NUMBER, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.NUMBER,
+    Platform.SWITCH,
+    Platform.BUTTON,
+    Platform.DATETIME,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
