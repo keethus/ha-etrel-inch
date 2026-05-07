@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Etrel INCH charger",
+        "description": "Add an Etrel INCH EV charger via Modbus TCP. Enter the charger's IP, Modbus port (default 502), slave/unit ID, a friendly name, and how often Home Assistant should poll it (seconds). Polling must be more frequent than the charger's Modbus monitoring_interval to avoid the watchdog fallback.",
+        "data": {
+          "name": "Name",
+          "host": "Host or IP address",
+          "port": "Modbus TCP port",
+          "slave_id": "Slave / Unit ID",
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the charger. Check the host, port, slave ID, and that Modbus TCP is enabled.",
+      "unknown": "Unexpected error. See Home Assistant logs."
+    },
+    "abort": {
+      "already_configured": "This charger is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Etrel INCH options",
+        "description": "Adjust how often the charger is polled. Enable writes only after you have confirmed the correct register addresses for your firmware — the current/pause registers shipped with this integration are placeholders.",
+        "data": {
+          "poll_interval": "Poll interval (seconds)",
+          "enable_writes": "Enable write controls (current setpoint, pause)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "charge_status": {
+        "name": "Charge status",
+        "state": {
+          "available": "Available",
+          "waiting_for_vehicle": "Waiting for vehicle",
+          "waiting_to_start": "Waiting to start",
+          "charging": "Charging",
+          "vehicle_paused": "Paused by vehicle",
+          "charger_paused": "Paused by charger",
+          "charge_ended": "Charge ended",
+          "error": "Error",
+          "resuming": "Resuming",
+          "unavailable": "Unavailable",
+          "unknown": "Unknown"
+        }
+      },
+      "active_power": { "name": "Active power" },
+      "session_energy": { "name": "Session energy" },
+      "session_duration": { "name": "Session duration" },
+      "num_phases": { "name": "Active phases" },
+      "model": { "name": "Model" },
+      "sw_version": { "name": "Firmware version" }
+    },
+    "number": {
+      "charging_current_setpoint": { "name": "Charging current setpoint" }
+    },
+    "switch": {
+      "charging_paused": { "name": "Pause charging" }
+    }
+  }
+}

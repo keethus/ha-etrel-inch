@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Etrel INCH lādētājs",
+        "description": "Pievienot Etrel INCH elektroauto lādētāju caur Modbus TCP. Ievadiet lādētāja IP adresi, Modbus portu (parasti 502), Modbus slave/unit ID, draudzīgu nosaukumu un aptaujas intervālu sekundēs. Aptaujas intervālam jābūt īsākam par lādētāja monitoring_interval iestatījumu, lai netiktu aktivizēts watchdog atkāpšanās režīms.",
+        "data": {
+          "name": "Nosaukums",
+          "host": "Adrese vai IP",
+          "port": "Modbus TCP ports",
+          "slave_id": "Slave / Unit ID",
+          "poll_interval": "Aptaujas intervāls (sekundes)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Neizdevās izveidot savienojumu ar lādētāju. Pārbaudiet adresi, portu, slave ID un to, vai Modbus TCP ir ieslēgts.",
+      "unknown": "Negaidīta kļūda. Skatīt Home Assistant žurnālu."
+    },
+    "abort": {
+      "already_configured": "Šis lādētājs jau ir pievienots."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Etrel INCH iestatījumi",
+        "description": "Pielāgojiet aptaujas intervālu. Ieslēdziet rakstīšanas vadību tikai pēc tam, kad esat apstiprinājis pareizos reģistru adreses savai programmaparatūrai — pašlaik norādītās ir tikai vietturi.",
+        "data": {
+          "poll_interval": "Aptaujas intervāls (sekundes)",
+          "enable_writes": "Ieslēgt rakstīšanas vadību (strāva, pauze)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "charge_status": {
+        "name": "Lādēšanas statuss",
+        "state": {
+          "available": "Pieejams",
+          "waiting_for_vehicle": "Gaida automašīnu",
+          "waiting_to_start": "Gaida lādēšanas sākumu",
+          "charging": "Lādē",
+          "vehicle_paused": "Apturēts (automašīna)",
+          "charger_paused": "Apturēts (lādētājs)",
+          "charge_ended": "Lādēšana pabeigta",
+          "error": "Kļūda",
+          "resuming": "Atsāk lādēšanu",
+          "unavailable": "Nepieejams",
+          "unknown": "Nezināms"
+        }
+      },
+      "active_power": { "name": "Aktīvā jauda" },
+      "session_energy": { "name": "Sesijas enerģija" },
+      "session_duration": { "name": "Sesijas ilgums" },
+      "num_phases": { "name": "Aktīvās fāzes" },
+      "model": { "name": "Modelis" },
+      "sw_version": { "name": "Programmaparatūras versija" }
+    },
+    "number": {
+      "charging_current_setpoint": { "name": "Lādēšanas strāvas iestatījums" }
+    },
+    "switch": {
+      "charging_paused": { "name": "Apturēt lādēšanu" }
+    }
+  }
+}
