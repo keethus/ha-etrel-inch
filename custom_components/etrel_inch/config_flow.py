@@ -48,7 +48,13 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 
 
 async def _validate(hass, data: dict[str, Any]) -> str:
-    """Connect and read serial. Returns the serial for use as unique_id."""
+    """Connect, verify the charger answers, and return a unique_id.
+
+    Validation reads the dynamic block at regs 0-1 (status + phases) — those
+    are populated on every INCH regardless of commissioning. The identity
+    block at 990 is unreliable across firmwares, so we read it best-effort:
+    use the serial if present, otherwise synthesize a host-based unique_id.
+    """
     client = EtrelModbusClient(
         host=data[CONF_HOST],
         port=data[CONF_PORT],
@@ -56,12 +62,15 @@ async def _validate(hass, data: dict[str, Any]) -> str:
     )
     try:
         await client.connect()
-        serial = await client.read_serial_only()
+        await client.probe_connectivity()
+        info = await client.read_device_info()
     finally:
         await client.close()
-    if not serial:
-        raise EtrelModbusError("Empty serial number returned")
-    return serial
+
+    if info.serial_number:
+        return info.serial_number
+    # Fallback: stable, human-readable, unique per host+slave on the LAN.
+    return f"etrel_inch_{data[CONF_HOST]}_{data[CONF_SLAVE_ID]}"
 
 
 class EtrelConfigFlow(ConfigFlow, domain=DOMAIN):

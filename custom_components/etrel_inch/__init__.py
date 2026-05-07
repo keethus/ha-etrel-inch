@@ -40,10 +40,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await client.connect()
+        # Connectivity probe — fails fast if the charger isn't reachable.
+        await client.probe_connectivity()
+        # Identity is best-effort; empty fields are tolerated.
         device_info = await client.read_device_info()
     except EtrelModbusError as err:
         await client.close()
         raise ConfigEntryNotReady(f"Failed to reach Etrel INCH at {host}: {err}") from err
+
+    # Stable serial fallback for the device-registry identifier when the
+    # charger doesn't expose its serial at register 990.
+    if not device_info.serial_number:
+        device_info.serial_number = f"etrel_inch_{host}_{slave_id}"
 
     coordinator = EtrelCoordinator(
         hass=hass,

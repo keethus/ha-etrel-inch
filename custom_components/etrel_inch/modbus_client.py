@@ -173,19 +173,36 @@ class EtrelModbusClient:
         }
 
     async def read_device_info(self) -> DeviceInfo:
-        """Read static identity registers (990-1019)."""
-        block = await self._read(address=990, count=30)
-        return DeviceInfo(
+        """Read static identity registers (990-1019). Tolerant of zeros/missing
+        firmware identity blocks — returns empty strings on miss, callers must
+        substitute defaults."""
+        try:
+            block = await self._read(address=990, count=30)
+        except EtrelModbusError as err:
+            _LOGGER.debug("Identity read at 990 failed: %s — using empty defaults", err)
+            return DeviceInfo(serial_number="", model="", hw_version="", sw_version="")
+
+        info = DeviceInfo(
             serial_number=self._decode_string(block[0:10]),
             model=self._decode_string(block[10:20]),
             hw_version=self._decode_string(block[20:25]),
             sw_version=self._decode_string(block[25:30]),
         )
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug(
+                "Identity registers 990-1019 raw=%s decoded=%s",
+                block, info,
+            )
+        return info
 
-    async def read_serial_only(self) -> str:
-        """Used by the config flow to validate connectivity."""
-        block = await self._read(address=990, count=10)
-        return self._decode_string(block)
+    async def probe_connectivity(self) -> dict[str, int]:
+        """Validate connectivity by reading the dynamic block at regs 0-1.
+        These are populated on every Etrel INCH regardless of commissioning."""
+        block = await self._read(address=0, count=2)
+        return {
+            "charge_status": self._decode_int16(block, 0),
+            "num_phases": self._decode_int16(block, 1),
+        }
 
     # ----- writes (PLACEHOLDER — gated by CONF_ENABLE_WRITES) -----
 
