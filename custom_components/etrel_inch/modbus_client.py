@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import struct
 from dataclasses import dataclass
@@ -13,6 +14,13 @@ _LOGGER = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 5.0
 REQUEST_TIMEOUT = 5.0
+
+# pymodbus renamed `slave` -> `device_id` in 3.7 and removed `slave` in 3.8.
+# Detect once at import time so we work on both old and new HA bundles.
+_READ_PARAMS = inspect.signature(
+    AsyncModbusTcpClient.read_holding_registers
+).parameters
+_SLAVE_KW = "device_id" if "device_id" in _READ_PARAMS else "slave"
 
 
 class EtrelModbusError(Exception):
@@ -81,7 +89,7 @@ class EtrelModbusClient:
                     self._client.read_holding_registers(
                         address=address,
                         count=count,
-                        slave=self._slave_id,
+                        **{_SLAVE_KW: self._slave_id},
                     ),
                     timeout=REQUEST_TIMEOUT,
                 )
@@ -103,7 +111,7 @@ class EtrelModbusClient:
                     self._client.write_registers(
                         address=address,
                         values=values,
-                        slave=self._slave_id,
+                        **{_SLAVE_KW: self._slave_id},
                     ),
                     timeout=REQUEST_TIMEOUT,
                 )
